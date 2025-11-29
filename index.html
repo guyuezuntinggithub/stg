@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vue & Vuetify Canvas App</title>
+    
+    <!-- Vuetify CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@3.9.7/dist/vuetify.min.css" rel="stylesheet">
+    <!-- Material Design Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" rel="stylesheet">
+    
+    <style>
+        /* 确保html, body, 和 v-app 占满整个视口高度 */
+        html, body, #app, .v-application {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* 防止出现滚动条 */
+        }
+        /* 主布局容器 */
+        .main-layout {
+            display: flex;
+            height: 100%; /* 因为没有 app-bar，所以高度是 100% */
+        }
+        /* Canvas 的容器 */
+        .canvas-container {
+            position: relative; /* 使得内部的绝对定位元素相对于它定位 */
+            height: 100%;
+            padding: 0 !important;
+            /* 添加过渡效果，使 Canvas 缩放更平滑 */
+            transition: width 0.2s ease-in-out;
+        }
+        #drop-zone {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background-color: #f0f0f0;
+            z-index: 0;
+        }
+        /* 右侧面板 */
+        .scene-panel {
+            flex-shrink: 0; /* 防止面板被压缩 */
+            border-left: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+        }
+        /* 面板滚动条 */
+        .panel-content-scroll {
+            flex-grow: 1; /* 占据剩余空间 */
+            overflow-y: auto; /* 内容溢出时显示垂直滚动条 */
+            overflow-x: hidden; /* 隐藏水平滚动条 */
+        }
+        .fps-counter {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            color: white;
+            font-size: 16px;
+            font-family: monospace;
+            background-color: rgba(0, 0, 0, 0.5); /* 半透明背景，增强可读性 */
+            padding: 4px 8px;
+            border-radius: 4px;
+            z-index: 10; /* 确保在所有元素之上 */
+            pointer-events: none; /* 让鼠标可以“穿透”它，操作下面的canvas */
+        }
+        /* 用于 pointerLock 的遮罩层 */
+        #blocker {
+            position: absolute;
+            width: 50%;
+            height: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 3px solid #ffffff;
+            border-radius: 15px;
+            box-sizing: border-box;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 5; /* 在 Canvas 之上，UI 之下 */
+        }
+        #instructions {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-size: 14px;
+            cursor: pointer;
+            color: white;
+            font-family: sans-serif;
+        }
+        .instructions-card {
+            /* 使用 RGBA 设置带透明度的背景色 */
+            background-color: rgba(30, 30, 30, 0.8) !important;
+            /* 可选：添加背景模糊（毛玻璃效果），增加高级感 */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            color: #F5F5F5;
+        }
+        /* 为子标题设置更亮的颜色以提高对比度 */
+        .v-list-subheader {
+            color: rgba(245, 245, 245, 0.85);
+        }
+        /* 为对话框卡片添加样式 */
+        .dialog-card {
+            background-color: rgba(30, 30, 30, 0.85) !important;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            color: #F5F5F5;
+        }
+        /* 移除统计列表的内边距，让栅格系统来控制 */
+        .stat-list .v-list-item {
+            padding-inline-start: 0;
+            padding-inline-end: 0;
+        }
+        /* --- 修改后的统计信息面板样式 --- */
+        .statistics-panel {
+            position: absolute;
+            top: 50%; /* 垂直居中 */
+            right: 16px;
+            transform: translateY(-50%); /* 垂直居中对齐 */
+            width: 220px; /* 使其更窄 */
+            z-index: 10;
+            pointer-events: none; /* 允许点击穿透容器 */
+        }
+        .statistics-panel > .v-card {
+            pointer-events: auto; /* 但卡片本身可以响应点击 */
+        }
+        /* 为场景列表添加固定高度和边框 */
+        .scrollable-list-container {
+            padding: 8px;
+        }
+        .scrollable-list {
+            height: 250px; /* 固定高度 */
+            overflow-y: auto;
+            flex-shrink: 1;
+            border: 1px solid rgba(128, 128, 128, 0.3); /* 添加边框 */
+            border-radius: 4px;
+        }
+        /* 变换面板样式 */
+        .transform-panel {
+            border-top: 1px solid rgba(128, 128, 128, 0.3);
+            flex-shrink: 0;
+        }
+        .transform-row-label {
+            font-size: 0.8rem;
+            color: #888;
+            white-space: nowrap;
+            padding-right: 8px;
+        }
+        .draggable-label {
+            cursor: ew-resize;
+            user-select: none;
+            padding: 0 8px;
+            color: #888;
+        }
+        /* 【新增】分隔条样式 */
+        .splitter {
+            width: 5px;
+            background-color: #e0e0e0;
+            cursor: col-resize;
+            flex-shrink: 0;
+        }
+        .splitter:hover {
+            background-color: #bdbdbd;
+        }
+        .color-swatch {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            border: 1px solid #888;
+            margin-right: 12px;
+        }
+        /* 右下角控制按钮的容器 */
+        .canvas-controls {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            z-index: 10;
+            display: flex;
+            flex-direction: row; /* 改为水平排列 */
+            gap: 12px; /* 按钮之间的间距 */
+        }
+        /* 自定义按钮样式，实现半透明黑色效果 */
+        .control-btn {
+            background-color: rgba(0, 0, 0, 0.5) !important;
+            color: white !important;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+        /* --- 新增：时间轴样式 --- */
+        .timeline-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 60px; /* 悬停触发区域的高度 */
+            z-index: 5;
+        }
+        .timeline-controls {
+            position: absolute;
+            bottom: 14px;
+            left: 16px;
+            right: 200px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 16px;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            border-radius: 8px;
+            color: white;
+            
+            /* 默认隐藏 */
+            opacity: 0;
+            transform: translateY(10px);
+            pointer-events: none;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        /* 鼠标悬停在容器上时，显示控制条 */
+        .timeline-container:hover .timeline-controls {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+        .timeline-time {
+            font-family: monospace;
+            font-size: 0.9em;
+            white-space: nowrap;
+        }
+        /* --- 自定义 Slider 样式 --- */
+        .timeline-slider .v-slider-track__background {
+            background-color: rgba(255, 255, 255, 0.3) !important;
+        }
+        .timeline-slider .v-slider-track__fill,
+        .timeline-slider .v-slider-thumb {
+            transition: none !important;
+        }
+        .timeline-slider .v-slider-track__fill,
+        .timeline-slider .v-slider-thumb__surface {
+            background-color: white !important;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <v-app>
+        <!-- 左上角浮动菜单按钮 -->
+        <v-menu v-model="menu" location="bottom">
+            <template v-slot:activator="{ props }">
+                <v-btn
+                    v-bind="props"
+                    icon="mdi-dots-vertical"
+                    location="top start"
+                    position="fixed"
+                    size="large"
+                    class="ma-4"
+                    elevation="8"
+                    style="z-index: 10;"
+                ></v-btn>
+            </template>
+            <v-list>
+                <template v-if="!isMobile">
+                    <v-list-item @click="openRightPanel('scenes')" prepend-icon="mdi-island" title="Scene"></v-list-item>
+                    <v-list-item @click="openRightPanel('camera')" prepend-icon="mdi-camera" title="Camera"></v-list-item>
+                    <v-list-item @click="openRightPanel('xr')" prepend-icon="mdi-google-cardboard" title="XR"></v-list-item>
+                </template>
+                <v-list-item @click="toggleFPS" prepend-icon="mdi-speedometer" title="FPS"></v-list-item>
+                <v-list-item @click="toggleImport" prepend-icon="mdi-file-import" title="Import"></v-list-item>
+                <v-list-item @click="showInstructions = true" prepend-icon="mdi-help-circle-outline" title="Help"></v-list-item>
+                <v-list-group value="Scenes">
+                    <template v-slot:activator="{ props }">
+                        <v-list-item
+                            v-bind="props" @click.stop
+                            prepend-icon="mdi-folder-multiple-image"
+                            title="选择场景"
+                        ></v-list-item>
+                    </template>
+                    <v-list-item
+                        v-for="sceneName in cloudSceneFiles"
+                        :key="sceneName"
+                        :title="sceneName"
+                        @click="loadScene(sceneName)"
+                    ></v-list-item>
+                </v-list-group>
+                <!-- quality options only for mobile -->
+                <v-list-group v-if="isMobile" value="Quality">
+                    <template v-slot:activator="{ props }">
+                        <v-list-item
+                            v-bind="props" @click.stop
+                            prepend-icon="mdi-tune"
+                            title="质量"
+                        ></v-list-item>
+                    </template>
+                    <v-list-item
+                        v-for="q in qualityOptions"
+                        :key="q"
+                        :title="q"
+                        :active="quality === q"
+                        @click="setQuality(q)"
+                    ></v-list-item>
+                </v-list-group>
+                <!-- xr options only for mobile -->
+                <v-list-group v-if="isMobile" value="XR">
+                    <template v-slot:activator="{ props }">
+                        <v-list-item
+                            v-bind="props" @click.stop
+                            prepend-icon="mdi-google-cardboard"
+                            title="XR"
+                        ></v-list-item>
+                    </template>
+                    <v-list-item
+                        v-for="q in xrOptions"
+                        :key="q"
+                        :title="q"
+                        @click="enterXR(q)"
+                    ></v-list-item>
+                </v-list-group>
+            </v-list>
+        </v-menu>
+        
+        <!-- 主布局容器 -->
+        <div class="main-layout">
+            <!-- Canvas 容器，宽度由计算属性控制 -->
+            <v-main class="canvas-container" :style="{ width: mainContentWidth }">
+                <!-- canvas -->
+                <canvas id="drop-zone"></canvas>
+                <!-- FPS 计数器，由 v-if 控制显示 -->
+                <div v-if="showFPS" class="fps-counter">
+                    FPS: {{ Math.round(currentFPS) }}
+                </div>
+                <!-- pointerLock Controls 的遮罩层 -->
+                <div id="blocker" ref="blocker" v-show="controlMode === 'pointerLock'">
+                    <div id="instructions" @click="lockPointer">
+                        <p style="font-size: 36px">点击以开始</p>
+                        <p>
+                            W, A, S, D = 移动<br/>
+                            鼠标 = 环顾四周<br/>
+                            ESC = 解锁鼠标<br/>
+                            Y = 切换高度锁定
+                        </p>
+                    </div>
+                </div>
+                <!-- 统计信息面板 -->
+                <div v-if="showOverlay" class="statistics-panel">
+                    <v-card class="dialog-card" rounded="lg">
+                        <v-card-title class="text-h6 pa-3">Statistics</v-card-title>
+                        <v-divider></v-divider>
+                        <v-card-text class="pa-3">
+                            <v-list bg-color="transparent" class="stat-list" density="compact">
+                                <v-list-item><v-row no-gutters align="center"><v-col>FPS</v-col><v-col class="text-grey-lighten-1 text-right">{{ Math.round(statistics.fps) }}</v-col></v-row></v-list-item>
+                                <v-list-item><v-row no-gutters align="center"><v-col>FrameTime</v-col><v-col class="text-grey-lighten-1 text-right">{{ statistics.frameTime }}ms</v-col></v-row></v-list-item>
+                                <v-list-item><v-row no-gutters align="center"><v-col>Splats</v-col><v-col class="text-grey-lighten-1 text-right">{{ statistics.splats }}</v-col></v-row></v-list-item>
+                                <v-list-item><v-row no-gutters align="center"><v-col>Visible</v-col><v-col class="text-grey-lighten-1 text-right">{{ statistics.visible }}%</v-col></v-row></v-list-item>
+                                <v-list-item><v-row no-gutters align="center"><v-col>SortTime</v-col><v-col class="text-grey-lighten-1 text-right">{{ statistics.sortTime }}ms</v-col></v-row></v-list-item>
+                                <v-list-item><v-row no-gutters align="center"><v-col>CullTime</v-col><v-col class="text-grey-lighten-1 text-right">{{ statistics.cullTime }}ms</v-col></v-row></v-list-item>
+                                <v-list-item><v-row no-gutters align="center"><v-col>Resolution</v-col><v-col class="text-grey-lighten-1 text-right">{{ statistics.width }} x {{ statistics.height }}</v-col></v-row></v-list-item>
+                                <v-list-item><v-row no-gutters align="center"><v-col>DPR</v-col><v-col class="text-grey-lighten-1 text-right">{{ statistics.dpr }}</v-col></v-row></v-list-item>
+                            </v-list>
+                        </v-card-text>
+                    </v-card>
+                </div>
+                <!-- --- 修改后的右下角控制按钮 --- -->
+                <div class="canvas-controls">
+                    <v-tooltip text="切换渲染模式 (椭圆/点云)" location="top">
+                        <template v-slot:activator="{ props }">
+                            <v-btn 
+                                v-bind="props" 
+                                icon 
+                                class="control-btn" 
+                                @click="toggleRenderMode"
+                            >
+                                <v-icon>{{ renderModeIcon }}</v-icon>
+                            </v-btn>
+                        </template>
+                    </v-tooltip>
+                    <v-tooltip text="显示/隐藏网格" location="top">
+                        <template v-slot:activator="{ props }">
+                            <v-btn 
+                                v-bind="props" 
+                                icon 
+                                class="control-btn" 
+                                @click="toggleGrid"
+                            >
+                                <v-icon>{{ showGrid ? 'mdi-grid' : 'mdi-grid-off' }}</v-icon>
+                            </v-btn>
+                        </template>
+                    </v-tooltip>
+                    <v-tooltip text="显示/隐藏叠加层" location="top">
+                        <template v-slot:activator="{ props }">
+                            <v-btn 
+                                v-bind="props" 
+                                icon 
+                                class="control-btn" 
+                                @click="toggleOverlay"
+                            >
+                                <v-icon>{{ showOverlay ? 'mdi-layers-outline' : 'mdi-layers-off-outline' }}</v-icon>
+                            </v-btn>
+                        </template>
+                    </v-tooltip>
+                </div>
+                <!-- --- 新增：时间轴控制条 --- -->
+                <div v-if="showTimeline" class="timeline-container">
+                    <div class="timeline-controls">
+                        <v-btn icon density="compact" variant="text" @click="goToStart">
+                            <v-icon>mdi-skip-previous</v-icon>
+                        </v-btn>
+                        <v-btn icon density="compact" variant="text" @click="togglePlayPause">
+                            <v-icon>{{ timeline.isPlaying ? 'mdi-play' : 'mdi-pause' }}</v-icon>
+                        </v-btn>
+
+                        <span class="timeline-time">{{ formattedCurrentTime }} / {{ formattedTotalDuration }}</span>
+                        
+                        <v-slider
+                            v-model="timeline.currentTime"
+                            :min="startTimeInput"
+                            :max="timeline.totalDuration"
+                            :step="0.01"
+                            hide-details
+                            density="compact"
+                            class="timeline-slider"
+                            @start="isDraggingTimelineSlider = true"
+                            @end="isDraggingTimelineSlider = false"
+                        ></v-slider>
+                        
+                        <v-menu location="top">
+                            <template v-slot:activator="{ props }">
+                                <v-btn v-bind="props" variant="text" density="compact">
+                                    {{ timeline.playbackSpeed.toFixed(1) }}x
+                                </v-btn>
+                            </template>
+                            <v-list density="compact">
+                                <v-list-item 
+                                    v-for="speed in [1.0, 6.0, 12.0, 24.0, 30.0, 60.0]" 
+                                    :key="speed" 
+                                    :title="`${speed.toFixed(1)}x`"
+                                    @click="setPlaybackSpeed(speed)"
+                                ></v-list-item>
+                            </v-list>
+                        </v-menu>
+                    </div>
+                </div>
+            </v-main>
+
+            <!-- 分隔条 -->
+            <div v-if="isRightPanelOpen" class="splitter" @mousedown="startResize"></div>
+
+            <!-- 右侧动态面板 -->
+            <v-sheet v-if="isRightPanelOpen" :style="{ width: panelWidth + 'px' }" class="scene-panel">
+                <!-- 面板头部 -->
+                <div class="d-flex pa-4 align-center">
+                    <div class="text-h6 flex-grow-1">
+                        <span v-if="rightPanelMode === 'scenes'">场景管理</span>
+                        <span v-if="rightPanelMode === 'camera'">相机管理</span>
+                        <span v-if="rightPanelMode === 'xr'">XR</span>
+                    </div>
+                    <v-btn icon="mdi-close" variant="text" @click="rightPanelMode = null"></v-btn>
+                </div>
+                <v-divider></v-divider>
+                <!-- 将列表包裹在一个带边框和内边距的div中 -->
+                <div class="panel-content-scroll">
+                    <div v-if="rightPanelMode === 'scenes'" key="scenes-panel">
+                        <div class="scrollable-list-container">
+                            <v-list selectable class="scrollable-list">
+                                <v-list-item v-if="sceneList.length === 0">
+                                    <v-list-item-title class="text-center text-grey">Scene list is empty</v-list-item-title>
+                                </v-list-item>
+                                <v-list-item
+                                    v-for="scene in sceneList"
+                                    :key="scene.uid"
+                                    :title="scene.name"
+                                    :active="scene.uid === selectedSceneUID"
+                                    @click="selectScene(scene.uid, scene.gsType, scene.sequential)"
+                                >
+                                    <template v-slot:append>
+                                        <v-btn 
+                                            icon="mdi-delete" 
+                                            variant="text" 
+                                            size="small"
+                                            @click.stop="removeScene(scene.uid)"
+                                        ></v-btn>
+                                    </template>
+                                </v-list-item>
+                            </v-list>
+                        </div>
+
+                        <!-- 变换面板 -->
+                        <div v-if="selectedSceneTransform" class="transform-panel pa-2" :key="transformPanelKey">
+                            <div class="text-subtitle-1 mb-2">Transform</div>
+
+                            <v-row no-gutters align="center" class="mb-1">
+                                <v-col cols="3" class="transform-row-label">Position</v-col>
+                                <v-col v-for="axis in ['x', 'y', 'z']" :key="'pos-' + axis" class="pa-1">
+                                    <v-text-field 
+                                        v-model.number="selectedSceneTransform.position[axis]"
+                                        density="compact" hide-details variant="outlined"
+                                    >
+                                        <template v-slot:prepend-inner>
+                                            <span class="draggable-label" @mousedown="startDrag($event, 'position', axis)">{{ axis.toUpperCase() }}</span>
+                                        </template>
+                                    </v-text-field>
+                                </v-col>
+                            </v-row>
+
+                            <v-row no-gutters align="center" class="mb-1">
+                                <v-col cols="3" class="transform-row-label">Rotation</v-col>
+                                <v-col v-for="axis in ['x', 'y', 'z']" :key="'rot-' + axis" class="pa-1">
+                                    <v-text-field 
+                                        v-model.number="selectedSceneTransform.rotation[axis]"
+                                        density="compact" hide-details variant="outlined"
+                                    >
+                                        <template v-slot:prepend-inner>
+                                            <span class="draggable-label" @mousedown="startDrag($event, 'rotation', axis)">{{ axis.toUpperCase() }}</span>
+                                        </template>
+                                    </v-text-field>
+                                </v-col>
+                            </v-row>
+
+                            <v-row no-gutters align="center" class="mb-1">
+                                <v-col cols="3" class="transform-row-label">Scale</v-col>
+                                <v-col v-for="axis in ['x', 'y', 'z']" :key="'scl-' + axis" class="pa-1">
+                                    <v-text-field 
+                                        v-model.number="selectedSceneTransform.scale[axis]"
+                                        density="compact" hide-details variant="outlined"
+                                    >
+                                        <template v-slot:prepend-inner>
+                                            <span class="draggable-label" @mousedown="startDrag($event, 'scale', axis)">{{ axis.toUpperCase() }}</span>
+                                        </template>
+                                    </v-text-field>
+                                </v-col>
+                            </v-row>
+                            <!-- 应用和重置按钮 -->
+                            <v-row no-gutters class="mt-3 pa-1">
+                                <v-spacer></v-spacer>
+                                <v-btn @click="resetTransform" variant="outlined">重置</v-btn>
+                                <v-spacer></v-spacer>
+                                <v-btn @click="applyTransform" color="primary">应用</v-btn>
+                            </v-row>
+                            <!-- alphaCullThreshold -->
+                            <v-row no-gutters align="center" class="mb-1">
+                                <v-col cols="3" class="transform-row-label">AlphaThreshold</v-col>
+                                <v-col class="pa-1">
+                                    <v-slider v-model="alphaCullThreshold" :min="0" :max="255" :step="1" thumb-label hide-details>
+                                        <template v-slot:append>
+                                            <v-text-field v-model.number="alphaCullThreshold" density="compact" style="width: 80px" hide-details variant="outlined"></v-text-field>
+                                        </template>
+                                    </v-slider>
+                                </v-col>
+                            </v-row>
+                            <!-- 导出 -->
+                            <v-row no-gutters class="mt-3 pa-1">
+                                <v-spacer></v-spacer>
+                                <v-btn @click="exportGlb" color="primary">export</v-btn>
+                            </v-row>
+                            <v-row no-gutters class="mt-2 pa-1" align="center">
+                            <v-col cols="5">
+                                <v-text-field
+                                v-model="startTimeInput"
+                                label="Start Time (s)"
+                                type="number"
+                                dense
+                                clearable
+                                ></v-text-field>
+                            </v-col>
+                            <v-col cols="5">
+                                <v-text-field
+                                v-model="endTimeInput"
+                                label="End Time (s)"
+                                type="number"
+                                dense
+                                clearable
+                                ></v-text-field>
+                            </v-col>
+                            </v-row>
+
+                            <!-- 设置按钮 -->
+                            <v-row no-gutters class="mt-2 pa-1">
+                            <v-spacer></v-spacer>
+                            <v-btn color="primary" @click="setTimeRange">设置</v-btn>
+                            </v-row>
+                        </div>
+                        <div v-else class="pa-4 text-center text-grey">
+                            Select a scene to edit its properties
+                        </div>
+                    </div>
+                    <!-- 相机管理内容 -->
+                    <div v-if="rightPanelMode === 'camera'" key="camera-panel" class="pa-2">
+                        <div class="text-subtitle-1 mb-2">Camera Properties</div>
+                        <!-- position -->
+                        <v-row no-gutters align="center" class="mb-1">
+                            <v-col cols="3" class="transform-row-label">pos</v-col>
+                            <v-col v-for="axis in ['x', 'y', 'z']" :key="'scl-' + axis" class="pa-1">
+                                <v-text-field  v-model.number="cameraSettings.pos[axis]" density="compact" hide-details variant="outlined">
+                                    <template v-slot:prepend-inner>
+                                        <span class="draggable-label" @mousedown="startDrag($event, 'pos', axis)">{{ axis.toUpperCase() }}</span>
+                                    </template>
+                                </v-text-field>
+                            </v-col>
+                        </v-row>
+                        <!-- look -->
+                        <v-row no-gutters align="center" class="mb-1">
+                            <v-col cols="3" class="transform-row-label">look</v-col>
+                            <v-col v-for="axis in ['x', 'y', 'z']" :key="'scl-' + axis" class="pa-1">
+                                <v-text-field v-model.number="cameraSettings.look[axis]" density="compact" hide-details variant="outlined">
+                                    <template v-slot:prepend-inner>
+                                        <span class="draggable-label" @mousedown="startDrag($event, 'look', axis)">{{ axis.toUpperCase() }}</span>
+                                    </template>
+                                </v-text-field>
+                            </v-col>
+                        </v-row>
+                        <!-- up -->
+                        <v-row no-gutters align="center" class="mb-1">
+                            <v-col cols="3" class="transform-row-label">up</v-col>
+                            <v-col v-for="axis in ['x', 'y', 'z']" :key="'scl-' + axis" class="pa-1">
+                                <v-text-field 
+                                    v-model.number="cameraSettings.up[axis]"
+                                    density="compact" hide-details variant="outlined"
+                                >
+                                    <template v-slot:prepend-inner>
+                                        <span class="draggable-label" @mousedown="startDrag($event, 'up', axis)">{{ axis.toUpperCase() }}</span>
+                                    </template>
+                                </v-text-field>
+                            </v-col>
+                        </v-row>
+                        <!-- fov -->
+                        <v-row no-gutters align="center" class="mb-1">
+                            <v-col cols="3" class="transform-row-label">FOV</v-col>
+                            <v-col class="pa-1">
+                                <v-slider v-model="cameraSettings.fov" :min="10" :max="150" :step="1" thumb-label hide-details>
+                                    <template v-slot:append>
+                                        <v-text-field v-model.number="cameraSettings.fov" density="compact" style="width: 80px" hide-details variant="outlined"></v-text-field>
+                                    </template>
+                                </v-slider>
+                            </v-col>
+                        </v-row>
+                        <!-- near/far -->
+                        <v-row no-gutters align="center" class="mb-1">
+                            <v-col cols="3" class="transform-row-label">clip</v-col>
+                            <v-col v-for="axis in ['n', 'f']" :key="'scl-' + axis" class="pa-1">
+                                <v-text-field  v-model.number="cameraSettings.clip[axis]" density="compact" hide-details variant="outlined">
+                                    <template v-slot:prepend-inner>
+                                        <span class="draggable-label" @mousedown="startDrag($event, 'clip', axis)">{{ axis.toUpperCase() }}</span>
+                                    </template>
+                                </v-text-field>
+                            </v-col>
+                        </v-row>
+                        <!-- reset -->
+                        <v-row no-gutters class="mt-4 pa-1">
+                            <v-spacer></v-spacer>
+                            <v-btn @click="resetCameraSettings" variant="outlined">reset</v-btn>
+                        </v-row>
+                        <!-- dpr -->
+                        <div class="text-subtitle-1 mb-2">Resolution</div>
+                        <v-row no-gutters align="center" class="mb-1">
+                            <v-col cols="3" class="transform-row-label">dpr</v-col>
+                            <v-col class="pa-1">
+                                <v-slider v-model="cameraSettings.dpr" :min="0.8" :max="cameraSettings.maxDpr" :step="0.1" thumb-label hide-details>
+                                    <template v-slot:append>
+                                        <v-text-field v-model.number="cameraSettings.dpr" density="compact" style="width: 80px" hide-details variant="outlined"></v-text-field>
+                                    </template>
+                                </v-slider>
+                            </v-col>
+                        </v-row>
+                        <v-row no-gutters>
+                            <v-col class="text-center text-grey text-caption pa-1 pt-0">
+                                Rendering at: {{ statistics.width }} x {{ statistics.height }}
+                            </v-col>
+                        </v-row>
+                        <!-- background -->
+                        <div class="text-subtitle-1 mb-2 mt-4">Background</div>
+                        <v-row no-gutters align="center" class="mb-1">
+                             <v-col cols="3" class="transform-row-label">Color</v-col>
+                             <v-col class="d-flex align-center pa-1">
+                                <v-menu v-model="colorMenu" :close-on-content-click="false" location="end">
+                                    <template v-slot:activator="{ props }">
+                                        <div class="color-swatch" :style="{ backgroundColor: cameraSettings.backgroundColor }" v-bind="props"></div>
+                                    </template>
+                                    <v-color-picker v-model="cameraSettings.backgroundColor" hide-inputs></v-color-picker>
+                                </v-menu>
+                                <span class="text-caption text-grey flex-grow-1">{{ backgroundColorRGB }}</span>
+                                <v-btn @click="resetBackgroundColor" variant="outlined" size="small">reset</v-btn>
+                             </v-col>
+                        </v-row>
+                        <!-- control mode -->
+                        <div class="text-subtitle-1 mb-2 mt-4">Control Mode</div>
+                        <v-btn-toggle
+                            v-model="initControlMode"
+                            color="primary"
+                            variant="outlined"
+                            divided
+                            class="w-100 mb-4"
+                            v-if="!isMobile"
+                        >
+                            <v-btn value="orbit" @click="toggleControls('orbit')" class="flex-grow-1">
+                                <v-icon start>mdi-orbit</v-icon>
+                                Orbit
+                            </v-btn>
+                            <v-btn value="pointerLock" @click="toggleControls('pointerLock')" class="flex-grow-1">
+                                <v-icon start>mdi-cursor-move</v-icon>
+                                First Person
+                            </v-btn>
+                            <v-btn value="fly" @click="toggleControls('fly')" class="flex-grow-1">
+                                <v-icon start>mdi-airplane</v-icon>
+                                Fly
+                            </v-btn>
+                        </v-btn-toggle>
+                        <div v-else class="text-caption text-grey text-center pa-2">
+                            Control modes are available on desktop.
+                        </div>
+                    </div>
+                    <!-- XR管理 -->
+                    <div v-if="rightPanelMode === 'xr'" key="xr-panel" class="pa-2">
+                        <!-- 环境信息 -->
+                        <div class="text-subtitle-1 mb-2">Environment Info</div>
+                        <v-list bg-color="transparent" density="compact" class="stat-list">
+                            <v-list-item>
+                                <v-row no-gutters align="center">
+                                    <v-col>GPU</v-col>
+                                    <v-col class="text-grey-lighten-1 text-right text-caption">{{ environmentInfo.gpu }}</v-col>
+                                </v-row>
+                            </v-list-item>
+                            <v-list-item>
+                                <v-row no-gutters align="center">
+                                    <v-col>WebXR API</v-col>
+                                    <v-col class="text-right">
+                                        <v-icon :color="environmentInfo.isWebXRSupported ? 'green' : 'red'" :icon="environmentInfo.isWebXRSupported ? 'mdi-check' : 'mdi-close'"></v-icon>
+                                    </v-col>
+                                </v-row>
+                            </v-list-item>
+                            <v-list-item>
+                                <v-row no-gutters align="center">
+                                    <v-col>Immersive VR</v-col>
+                                    <v-col class="text-right">
+                                        <v-icon :color="environmentInfo.isVRSupported ? 'green' : 'red'" :icon="environmentInfo.isVRSupported ? 'mdi-check' : 'mdi-close'"></v-icon>
+                                    </v-col>
+                                </v-row>
+                            </v-list-item>
+                            <v-list-item>
+                                <v-row no-gutters align="center">
+                                    <v-col>Immersive AR</v-col>
+                                    <v-col class="text-right">
+                                        <v-icon :color="environmentInfo.isARSupported ? 'green' : 'red'" :icon="environmentInfo.isARSupported ? 'mdi-check' : 'mdi-close'"></v-icon>
+                                    </v-col>
+                                </v-row>
+                            </v-list-item>
+                        </v-list>
+                        <!-- recheck -->
+                        <v-row no-gutters class="mt-4 pa-1">
+                            <v-spacer></v-spacer>
+                            <v-btn @click="recheckXR" variant="outlined">recheck</v-btn>
+                        </v-row>
+                        <div v-if="environmentInfo.isWebXRSupported">
+                            <!-- control mode -->
+                            <div class="text-subtitle-1 mb-2 mt-4">XR Mode</div>
+                            <v-btn-toggle
+                                v-model="xrMode"
+                                color="primary"
+                                variant="outlined"
+                                divided
+                                class="w-100 mb-4"
+                            >
+                                <v-btn value="vr" class="flex-grow-1" :disabled="!environmentInfo.isVRSupported">
+                                    <v-icon start>mdi-virtual-reality</v-icon>
+                                    VR
+                                </v-btn>
+                                <v-btn value="ar" class="flex-grow-1" :disabled="!environmentInfo.isARSupported">
+                                    <v-icon start>mdi-augmented-reality</v-icon>
+                                    AR
+                                </v-btn>
+                            </v-btn-toggle>
+                            <!-- enter -->
+                            <v-row no-gutters class="mt-4 pa-1">
+                                <v-spacer></v-spacer>
+                                <v-btn @click="enterXR" variant="outlined">enter</v-btn>
+                            </v-row>
+                        </div>
+                        <div v-else class="text-caption text-grey text-center pa-2">
+                            WebXR not supported on this device.
+                        </div>
+                    </div>
+                </div>
+            </v-sheet>
+        </div>
+
+        <!-- 隐藏的文件输入框 -->
+        <input type="file" ref="fileInput" @change="onFileSelected" style="display: none;" />
+        <!-- 操作说明 Dialog -->
+        <v-dialog v-model="showInstructions" location="bottom" max-width="900px" class="ma-4">
+            <v-card class="instructions-card" rounded="lg">
+                <v-card-title class="text-h5 font-weight-bold pa-4">操作说明</v-card-title>
+                <v-card-text class="pa-4">
+                    <!-- PC端说明 -->
+                    <div v-if="!isMobile">
+                        <v-list-subheader>轨道控制 (Orbit)</v-list-subheader>
+                        <v-list-item><v-row align="center"><v-col cols="5">旋转视角</v-col><v-col cols="7" class="text-grey-lighten-1">按住鼠标左键并拖动</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">缩放</v-col><v-col cols="7" class="text-grey-lighten-1">滚动鼠标滚轮</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">平移</v-col><v-col cols="7" class="text-grey-lighten-1">按住鼠标右键并拖动</v-col></v-row></v-list-item>
+                        <v-divider class="my-2"></v-divider>
+                        <v-list-subheader>第一人称 (PointerLock)</v-list-subheader>
+                        <v-list-item><v-row align="center"><v-col cols="5">转动视角</v-col><v-col cols="7" class="text-grey-lighten-1">移动鼠标</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">移动</v-col><v-col cols="7" class="text-grey-lighten-1">W / A / S / D</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">退出模式</v-col><v-col cols="7" class="text-grey-lighten-1">ESC</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">锁定高度</v-col><v-col cols="7" class="text-grey-lighten-1">Y</v-col></v-row></v-list-item>
+                        <v-divider class="my-2"></v-divider>
+                        <v-list-subheader>飞行模式 (Fly)</v-list-subheader>
+                        <v-list-item><v-row align="center"><v-col cols="5">调整方向</v-col><v-col cols="7" class="text-grey-lighten-1">按住鼠标左键并拖动</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">前进/后退</v-col><v-col cols="7" class="text-grey-lighten-1">W / S</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">左右平移</v-col><v-col cols="7" class="text-grey-lighten-1">A / D</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">上下平移</v-col><v-col cols="7" class="text-grey-lighten-1">R / F</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">锁定高度</v-col><v-col cols="7" class="text-grey-lighten-1">Y</v-col></v-row></v-list-item>
+                    </div>
+                    
+                    <!-- 移动端说明 -->
+                    <div v-else>
+                        <v-list-subheader>轨道控制 (Orbit)</v-list-subheader>
+                        <v-list-item><v-row align="center"><v-col cols="5">旋转视角</v-col><v-col cols="7" class="text-grey-lighten-1">单指拖动</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">缩放</v-col><v-col cols="7" class="text-grey-lighten-1">双指捏合/张开</v-col></v-row></v-list-item>
+                        <v-list-item><v-row align="center"><v-col cols="5">平移</v-col><v-col cols="7" class="text-grey-lighten-1">双指拖动</v-col></v-row></v-list-item>
+                    </div>
+                </v-card-text>
+                 <v-card-actions class="pa-4">
+                    <v-spacer></v-spacer>
+                    <v-btn variant="tonal" @click="showInstructions = false">关闭</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+        <!-- 状态通知条 -->
+        <v-snackbar v-model="snackbar.show" :timeout="4000" location="bottom right">
+            {{ snackbar.text }}
+            <template v-slot:actions>
+                <v-btn color="blue" variant="text" @click="snackbar.show = false">
+                    关闭
+                </v-btn>
+            </template>
+        </v-snackbar>
+    </v-app>
+</div>
+
+<!-- Vue and Vuetify JS -->
+<script src="https://cdn.jsdelivr.net/npm/vue@3.5.20/dist/vue.global.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vuetify@3.9.7/dist/vuetify.min.js"></script>
+<script type="importmap">
+    {
+        "imports": {
+            "three": "/node_modules/three/build/three.module.js",
+            "three/addons/": "/node_modules/three/examples/jsm/",
+            "@tweenjs/tween.js": "/node_modules/@tweenjs/tween.js/dist/tween.esm.js"
+        }
+    }
+</script>
+<script type="module">
+    import ImmerScapeViewer from "./src/GSViewer.js";
+    const { createApp, ref, onMounted, nextTick, computed, watch, reactive } = Vue;
+    const { createVuetify } = Vuetify;
+
+    const vuetify = createVuetify();
+
+    createApp({
+        setup() {
+            let viewer;
+            // this
+            const isMobile = ref(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+            const menu = ref(false);
+            // right dynamic panel
+            const rightPanelMode = ref(null); // 'scenes', 'camera', 'xr' or null
+            const isRightPanelOpen = computed(() => rightPanelMode.value !== null);
+            const openRightPanel = (mode) => {
+                if (mode === rightPanelMode.value) {
+                    rightPanelMode.value = null;
+                } else {
+                    rightPanelMode.value = mode;
+                }
+            };
+            const panelWidth = ref(455);
+            const mainContentWidth = computed(() => {
+                return isRightPanelOpen.value ? `calc(100% - ${panelWidth.value}px)` : '100%';
+            });
+            const onResize = (event) => {
+                const newWidth = window.innerWidth - event.clientX;
+                panelWidth.value = Math.max(300, Math.min(800, newWidth));
+            };
+            const stopResize = () => {
+                window.removeEventListener('mousemove', onResize);
+                window.removeEventListener('mouseup', stopResize);
+            };
+            const startResize = (event) => {
+                event.preventDefault();
+                window.addEventListener('mousemove', onResize);
+                window.addEventListener('mouseup', stopResize);
+            };
+            // fps
+            const showFPS = ref(false);
+            const currentFPS = ref(0);
+            const toggleFPS = () => {
+                showFPS.value = !showFPS.value;
+            };
+            // file input
+            const fileInput = ref(null);
+            const onFileSelected = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                if (viewer) {
+                    viewer.fetchSceneWithNative(file);
+                }
+            };
+            const toggleImport = () => {
+                fileInput.value.click();
+            };
+            // control mode
+            const initControlMode = ref('orbit'); // only for initial display
+            const controlMode = ref('orbit');
+            const toggleControls = (expectMode) => {
+                if (viewer && viewer.setControlMode(expectMode)) {
+                    controlMode.value = expectMode;
+                }
+            };
+            const lockPointer = () => {
+                if (viewer) {
+                    viewer.lockPointer();
+                }
+            };
+            // help
+            const showInstructions = ref(false);
+            // statistics
+            const statistics = reactive({
+                fps: 0,
+                frameTime: 0,
+                splats: 0,
+                sortTime: 0,
+                culling: 0,
+                cullTime: 0,
+                width: 0,
+                height: 0,
+                dpr: 0,
+            });
+            // cloud file
+            const cloudSceneFiles = [
+                'chair', 'fit409', 'train', 'stg_static',
+                'flame', 'kitchen', 'girl',
+            ];
+            const loadScene = (sceneName) => {
+                if (viewer) {
+                    viewer.fetchSceneWithURL(`/scenes/${sceneName}.glb`);
+                }
+            };
+            // scene manage
+            const currentGSType = ref(2);
+            const isSceneSequential = ref(false);
+            const sceneList = ref([]);
+            const removeScene = (sceneId) => {
+                sceneList.value = sceneList.value.filter(scene => scene.uid !== sceneId);
+                currentGSType.value = 0;
+                isSceneSequential.value = false;
+                viewer.removeScene(sceneId);
+            };
+            const snackbar = reactive({
+                show: false,
+                text: '',
+            });
+            const selectedSceneUID = ref('');
+            const selectScene = (uid, gsType, sequential) => {
+                selectedSceneUID.value = uid;
+                currentGSType.value = gsType;
+                isSceneSequential.value = sequential;
+                if (gsType === 1 && !sequential) {
+                    timeline.isPlaying = true;
+                } else {
+                    timeline.isPlaying = false;
+                }
+                viewer.switchToScene(uid);
+            };
+            // selectedSceneTransform is reference to the internal transform object
+            const selectedSceneTransform = computed(() => {
+                if (selectedSceneUID.value === null) return null;
+                const scene = sceneList.value.find(s => s.uid === selectedSceneUID.value);
+                return scene ? scene.transform : null;
+            });
+            const dragState = reactive({
+                active: false,
+                property: null,
+                axis: null,
+                startX: 0,
+                initialValue: 0,
+            });
+            const startDrag = (event, property, axis) => {
+                if (!selectedSceneTransform.value) return;
+                event.preventDefault();
+                dragState.active = true;
+                dragState.property = property;
+                dragState.axis = axis;
+                dragState.startX = event.clientX;
+                if (rightPanelMode.value === 'scenes') {
+                    dragState.initialValue = selectedSceneTransform.value[property][axis];
+                } else if (rightPanelMode.value === 'camera') {
+                    dragState.initialValue = cameraSettings[property][axis];
+                }
+                
+                window.addEventListener('mousemove', onDrag);
+                window.addEventListener('mouseup', stopDrag);
+            };
+            const onDrag = (event) => {
+                if (!dragState.active) return;
+                const deltaX = event.clientX - dragState.startX;
+                let sensitivity;
+                if (dragState.property === 'scale') {
+                    sensitivity = 0.01;
+                    dragState.axis = 'x';
+                    const newValue = dragState.initialValue + deltaX * sensitivity;
+                    selectedSceneTransform.value[dragState.property][dragState.axis] = parseFloat(newValue.toFixed(2));
+                    selectedSceneTransform.value[dragState.property].y = selectedSceneTransform.value[dragState.property].x;
+                    selectedSceneTransform.value[dragState.property].z = selectedSceneTransform.value[dragState.property].x;
+                } else if (dragState.property === 'rotation') { 
+                    sensitivity = 0.5;
+                    const newValue = dragState.initialValue + deltaX * sensitivity;
+                    selectedSceneTransform.value[dragState.property][dragState.axis] = parseFloat(newValue.toFixed(2));
+                } else if (dragState.property === 'position') { 
+                    sensitivity = 0.1;
+                    const newValue = dragState.initialValue + deltaX * sensitivity;
+                    selectedSceneTransform.value[dragState.property][dragState.axis] = parseFloat(newValue.toFixed(2));
+                } else if (dragState.property === 'pos') { 
+                    sensitivity = 0.1;
+                    const newValue = dragState.initialValue + deltaX * sensitivity;
+                    cameraSettings[dragState.property][dragState.axis] = parseFloat(newValue.toFixed(3));
+                } else if (dragState.property === 'look') { 
+                    if (controlMode.value === 'orbit') {    // this is for target
+                        sensitivity = 0.1;
+                        const newValue = dragState.initialValue + deltaX * sensitivity;
+                        cameraSettings[dragState.property][dragState.axis] = parseFloat(newValue.toFixed(3));
+                    } else {    // this is for looking direction
+                        sensitivity = 0.01;
+                        const newValue = dragState.initialValue + deltaX * sensitivity;
+                        const look = cameraSettings[dragState.property];
+                        look[dragState.axis] = parseFloat(newValue.toFixed(3));
+                        const sqrt = Math.sqrt(look.x*look.x+look.y*look.y+look.z*look.z);
+                        if (sqrt > 1e-5) {
+                            look.x = parseFloat((look.x/sqrt).toFixed(3));
+                            look.y = parseFloat((look.y/sqrt).toFixed(3));
+                            look.z = parseFloat((look.z/sqrt).toFixed(3));
+                        }
+                    }
+                } else if (dragState.property === 'up') { 
+                    sensitivity = 0.01;
+                    const newValue = dragState.initialValue + deltaX * sensitivity;
+                    const up = cameraSettings[dragState.property];
+                    up[dragState.axis] = parseFloat(newValue.toFixed(3));
+                    const sqrt = Math.sqrt(up.x*up.x+up.y*up.y+up.z*up.z);
+                    if (sqrt > 1e-5) {
+                        up.x = parseFloat((up.x/sqrt).toFixed(3));
+                        up.y = parseFloat((up.y/sqrt).toFixed(3));
+                        up.z = parseFloat((up.z/sqrt).toFixed(3));
+                    }
+                } else if (dragState.property === 'clip') { 
+                    if (dragState.axis === 'n') {
+                        sensitivity = 0.001;
+                        const newValue = dragState.initialValue + deltaX * sensitivity;
+                        cameraSettings[dragState.property][dragState.axis] = parseFloat(newValue.toFixed(3));
+                    } else {
+                        sensitivity = 10;
+                        const newValue = dragState.initialValue + deltaX * sensitivity;
+                        cameraSettings[dragState.property][dragState.axis] = parseFloat(newValue.toFixed(0));
+                    }
+                }
+            };
+            const stopDrag = () => {
+                dragState.active = false;
+                window.removeEventListener('mousemove', onDrag);
+                window.removeEventListener('mouseup', stopDrag);
+            };
+            const transformPanelKey = ref(0);   // invoke the panel to re-render
+            const resetTransform = () => {
+                viewer.resetTransform();
+                transformPanelKey.value++;
+            };
+            const applyTransform = () => {
+                viewer.applyTransform();
+                transformPanelKey.value++;
+            };
+            const startTimeInput = ref(0);
+            const endTimeInput = ref(1);
+            const setTimeRange = () => {
+                //if (!viewer.value) return;
+
+            // 转成数字
+            console.warn("🔥 Vue: setTimeRange 点击触发", startTimeInput.value, endTimeInput.value);
+            const s = Number(startTimeInput.value);
+            const e = Number(endTimeInput.value);
+            if (s<=e)
+            {
+                timeline.currentTime = s;
+                timeline.totalDuration = e;
+            // 给 GSViewer 设置时间
+                viewer.setTimeRange(s,e);
+            }
+            //viewer.value.startTime = s;
+            //viewer.value.endTime = e;
+            };
+            watch(selectedSceneTransform, (newValue) => {
+                if (viewer && newValue) {
+                    viewer.updateTransform();
+                }
+            }, { deep: true });
+            // other scene panel content
+            const alphaCullThreshold = ref(3);
+            watch(alphaCullThreshold, (newValue) => {
+                let num = parseFloat(newValue) || 0;
+                num = Math.round(num);
+                num = Math.max(0, Math.min(255, num));
+                alphaCullThreshold.value = num;
+                viewer.setAlphaCullThreshold(alphaCullThreshold.value / 255);
+            });
+            const exportGlb = () => {
+                viewer.exportGlbFile();
+            };
+            // camera manage
+            const standardDPR = window.devicePixelRatio;
+            const isDragging = ref(0);
+            const colorMenu = ref(false);
+            const cameraSettings = reactive({
+                pos: { x: 0, y: 0, z: -2},
+                look: { x: 0, y: 0, z: 0},
+                up: { x: 0, y: -1, z: 0},
+                fov: 60,
+                clip: { n: 0.1, f: 1000 },
+                dpr: standardDPR,
+                maxDpr: standardDPR,
+                backgroundColor: `#262626`,
+            });
+            const resetCameraSettings = () => {
+                viewer.resetCamera();
+            };
+            const backgroundColorRGB = computed(() => {
+                const hex = cameraSettings.backgroundColor.slice(1);
+                const r = parseInt(hex.substring(0, 2), 16);
+                const g = parseInt(hex.substring(2, 4), 16);
+                const b = parseInt(hex.substring(4, 6), 16);
+                return `rgb(${r}, ${g}, ${b})`;
+            });
+            const resetBackgroundColor = () => {
+                cameraSettings.backgroundColor = `#262626`;
+                viewer.setBackgroundColor(0.15, 0.15, 0.15);
+            };
+            watch(cameraSettings, (newValue) => {
+                if (!isDragging.value) {
+                    viewer.updateCamera(cameraSettings);
+                }
+            }, { deep: true });
+            // bottom right buttons
+            const renderModeList = ref(['splat', 'point']);
+            const renderModeIcon = computed(() => {
+                switch (renderModeIdx.value) {
+                    case 0: return 'mdi-ellipse';
+                    case 1: return 'mdi-dots-hexagon';
+                    default: return 'mdi-blur-radial';
+                }
+            });
+            const renderModeIdx = ref(0);
+            const toggleRenderMode = () => {
+                renderModeIdx.value = (renderModeIdx.value + 1) % renderModeList.value.length;
+                viewer.setRenderMode(renderModeList.value[renderModeIdx.value]);
+            };
+            const showGrid = ref(true)
+            const toggleGrid = () => {
+                showGrid.value = !showGrid.value;
+                viewer.setGridVisibility(showGrid.value);
+            };
+            const showOverlay = ref(true)
+            const toggleOverlay = () => {
+                showOverlay.value = !showOverlay.value;
+                viewer.setGizmoVisibility(showOverlay.value);
+            }
+            // quality option for only mobile
+            const qualityOptions = ['High', 'Medium', 'Low'];
+            const quality2dprMapping = {'Low': 1.2, 'Medium': 1.2*0.7+standardDPR*0.3, 'High': 1.2*0.3+standardDPR*0.7};
+            const quality = ref('Medium');
+            const setQuality = (newQuality) => {
+                quality.value = newQuality;
+                viewer.setDPR(quality2dprMapping[newQuality]);
+                cameraSettings.dpr = quality2dprMapping[newQuality];
+            };
+            // xr manager
+            const xrMode = ref('vr');
+            const xrOptions = ['vr', 'ar'];
+            const enterXR = (value) => {
+                viewer.switchToXR('immersive-' + (isMobile.value ? value : xrMode.value));
+            };
+            const environmentInfo = {
+                gpu: 'unknown',
+                isWebXRSupported: false,
+                isVRSupported: false,
+                isARSupported: false,
+            };
+            const recheckXR = () => {
+                viewer.recheckXR();
+            };
+            // timeline
+            const showTimeline = computed(() => {
+                return currentGSType.value === 2 || (currentGSType.value === 1 && isSceneSequential.value);
+            });
+            const isDraggingTimelineSlider = ref(false);
+            const timeline = reactive({
+                isPlaying: false,
+                currentTime: startTimeInput.value,
+                totalDuration: 1, // default: 1 sec
+                playbackSpeed: 1.0,
+            });
+            const formatTime = (totalSeconds) => {
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = Math.floor(totalSeconds % 60);
+                return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            };
+            const formattedCurrentTime = computed(() => formatTime(timeline.currentTime));
+            const formattedTotalDuration = computed(() => formatTime(timeline.totalDuration));
+            const togglePlayPause = () => {
+                timeline.isPlaying = !timeline.isPlaying;
+                viewer.togglePlayPause();
+            };
+            const goToStart = () => {
+                timeline.currentTime = startTimeInput.value;
+                console.warn("🔥 Vue: goToStart 点击触发");
+                viewer.playFromStart();
+            };
+            const setPlaybackSpeed = (speed) => {
+                timeline.playbackSpeed = speed;
+                viewer.setPlaybackSpeed(speed);
+            };
+            watch(() => timeline.currentTime, (newTime) => {
+                if (isDraggingTimelineSlider.value) {
+                    viewer.setTimestamp(newTime);
+                }
+            });
+            watch(isDraggingTimelineSlider, (newValue) => {
+                viewer.setIsDraggingTimeline(newValue);
+            });
+
+            onMounted(() => {
+                console.log(document.getElementById('drop-zone'))
+                viewer = new ImmerScapeViewer();
+                if (isMobile.value) {
+                    cameraSettings.dpr = quality2dprMapping[quality.value];
+                    viewer.setDPR(quality2dprMapping[quality.value]);
+                    cameraSettings.backgroundColor = '#000000';
+                }
+                viewer.run();
+                viewer.fetchSceneWithURL("/scenes/chair.glb");
+                viewer.addExternalListener((msg) => {
+                    if (msg.updateTimestamp) {
+                        if (!isDraggingTimelineSlider.value) {
+                            timeline.currentTime = msg.timestamp;
+                            timeline.totalDuration = msg.duration;
+                        }
+                    } else if (msg.sceneLoaded) {
+                        const exists = sceneList.value.some(scene => scene.uid === msg.uid);
+                        if (!exists) {
+                            sceneList.value.push({
+                                uid: msg.uid,
+                                name: msg.name,
+                                transform: msg.transform,
+                                gsType: msg.gsType,
+                                sequential: msg.sequential,
+                            });
+                        }
+                        currentGSType.value = msg.gsType;
+                        isSceneSequential.value = msg.sequential;
+                        snackbar.show = false;
+                        selectedSceneUID.value = msg.uid;
+                    } else if (msg.startLoad) {
+                        snackbar.text = 'start to load: ' + msg.name;
+                        snackbar.show = true;
+                    } else if (msg.failLoad) {
+                        snackbar.text = `fail to load: ${msg.error}`;
+                        snackbar.show = true;
+                    } else if (msg.cameraUpdate) {
+                        cameraSettings.pos.x  = parseFloat(msg.position.x.toFixed(3));
+                        cameraSettings.pos.y  = parseFloat(msg.position.y.toFixed(3));
+                        cameraSettings.pos.z  = parseFloat(msg.position.z.toFixed(3));
+                        cameraSettings.look.x = parseFloat(msg.look.x.toFixed(3));
+                        cameraSettings.look.y = parseFloat(msg.look.y.toFixed(3));
+                        cameraSettings.look.z = parseFloat(msg.look.z.toFixed(3));
+                        cameraSettings.up.x   = parseFloat(msg.up.x.toFixed(3));
+                        cameraSettings.up.y   = parseFloat(msg.up.y.toFixed(3));
+                        cameraSettings.up.z   = parseFloat(msg.up.z.toFixed(3));
+                    } else if (msg.startDrag) {
+                        isDragging.value = true;
+                    } else if (msg.endDrag) {
+                        isDragging.value = false;
+                    } else if (msg.envInfo) {
+                        environmentInfo.gpu = msg.env.gpu;
+                        environmentInfo.isWebXRSupported = msg.env.isApiSupported;
+                        environmentInfo.isVRSupported = msg.env.immersiveVRSupported;
+                        environmentInfo.isARSupported = msg.env.immersiveARSupported;
+                    }
+                })
+
+                setInterval(() => {
+                    if (viewer) {
+                        currentFPS.value = viewer.getFPS ? viewer.getFPS() : 0;
+                        statistics.fps = currentFPS.value;
+                        statistics.frameTime = viewer.getFrameTime ? (viewer.getFrameTime() || 0).toFixed(2) : 'N/A';
+                        statistics.splats = viewer.getSplatNum ? viewer.getSplatNum() : 'N/A';
+                        statistics.sortTime = viewer.getLastSortTime ? (viewer.getLastSortTime() || 0).toFixed(2) : 'N/A';
+                        statistics.cullTime = viewer.getLastCullTime ? (viewer.getLastCullTime() || 0).toFixed(2) : 'N/A';
+                        statistics.visible = viewer.getCullingPercentage ? (viewer.getCullingPercentage()*100 || 0).toFixed(2) : 'N/A';
+                        const resolution = viewer.getResolution ? viewer.getResolution() : {width:0, height:0, dpr:0};
+                        statistics.width = resolution.width;
+                        statistics.height = resolution.height;
+                        statistics.dpr = resolution.dpr;
+                    }
+                }, 1000);
+                
+            });
+
+            return {
+                isMobile, menu,
+                // right panel
+                rightPanelMode, isRightPanelOpen, openRightPanel, panelWidth, mainContentWidth, onResize, startResize, stopResize, 
+                // fps
+                showFPS, currentFPS, toggleFPS,
+                // file input
+                fileInput, onFileSelected, toggleImport,
+                // control mode
+                initControlMode, controlMode, toggleControls, lockPointer,
+                // help
+                showInstructions,
+                // statistics
+                statistics,
+                // cloud files
+                cloudSceneFiles, loadScene,
+                // scene manager
+                currentGSType, isSceneSequential, sceneList, removeScene, snackbar, selectedSceneUID, selectScene, 
+                selectedSceneTransform, dragState, startDrag, onDrag, stopDrag, transformPanelKey, resetTransform, applyTransform,
+                // camera manager
+                isDragging, colorMenu, cameraSettings, resetCameraSettings, backgroundColorRGB, resetBackgroundColor,
+                // bottom right buttons
+                renderModeList, renderModeIcon, renderModeIdx, toggleRenderMode, showGrid, toggleGrid, showOverlay, toggleOverlay,
+                // quality option for only mobile
+                qualityOptions, quality2dprMapping, setQuality, quality,
+                // xr manager
+                xrMode, xrOptions, enterXR, environmentInfo, recheckXR, 
+                // other scene panel content
+                alphaCullThreshold, exportGlb, 
+                startTimeInput,endTimeInput,setTimeRange,
+                // timeline
+                showTimeline, isDraggingTimelineSlider, timeline, formattedCurrentTime, formattedTotalDuration, togglePlayPause, goToStart, setPlaybackSpeed
+            };
+        }
+    }).use(vuetify).mount('#app');
+</script>
+
+</body>
+</html>

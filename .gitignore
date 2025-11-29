@@ -1,0 +1,15 @@
+.vscode
+./*.ply
+TODO
+test
+test.html
+./*.png
+node_modules
+dist
+scenes/*.glb
+/*.zip
+__pycache__
+*.pem
+vite.config.js
+handy.js-master
+*.pdf
