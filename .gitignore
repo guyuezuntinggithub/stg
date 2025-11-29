@@ -4,9 +4,9 @@ TODO
 test
 test.html
 ./*.png
-node_modules
-dist
-scenes/*.glb
+#node_modules
+#dist
+#scenes/*.glb
 /*.zip
 __pycache__
 *.pem
