@@ -67,6 +67,11 @@ class Kernel_spacetime:
     
     @staticmethod
     def getParams(data: bytes):
+        arr = np.frombuffer(data, dtype=np.float32)
+
+        # 打印数组元素个数
+        print("Number of float32 elements:", arr.size)
+        print("total:", P['total'])
         ply = np.frombuffer(data, dtype=np.float32).reshape([-1, P['total']])
         ply = utils.alignTo256(ply, P['opacity'], 256)
 
