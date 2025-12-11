@@ -78,6 +78,7 @@ export default class GSViewer {
         this.videoDuration = 1;
         this.videostartTime = 0;
         this.vedioendTime=1;
+        this.reportTime=0;
         this.lastFPSTime = 0;
         this.frameCount = 0;
         this.fps = 30;
@@ -229,7 +230,7 @@ export default class GSViewer {
         //console.warn("🔥 setTimeRange 被调用了：", s, e);
         //debugger;
         this.videostartTime = s;
-        this.vedioendTime = e;
+        //this.vedioendTime = e;
         this.loopedTime =s;
         this.videoDuration = e;
         this.eventBus.emit('noteExternalListener', {
@@ -373,6 +374,7 @@ export default class GSViewer {
 
         const animate = (currentTime) => {
             this.normalRenderLoopHandle = requestAnimationFrame(animate);
+            //+this.videostartTime*1000
 
             this.__updateFPS(currentTime);
             this.__updateControls();
@@ -477,7 +479,7 @@ export default class GSViewer {
 
     __onSortForSkipFrameDone({}) {
         this.sortForSkipFrame = false;
-        this.loopedTime = this.skipTimestamps.shift() || 0;
+        this.loopedTime = this.skipTimestamps.shift() || this.videostartTime;
     }
 
     __onBuffersReady({ data, sceneName }) {
@@ -828,10 +830,15 @@ export default class GSViewer {
             this.frameCount = 0;
             this.lastFPSTime = currentTime;
         }
+        
         this.deltaT = currentTime - this.lastFrameTime;
         this.lastFrameTime = currentTime;
         if (!this.pause && !this.isDraggingTimeline) {
-            this.loopedTime = this.loopedTime+this.videostartTime+this.deltaT / 1000 * this.playSpeed; // ms => s
+            this.loopedTime +=this.deltaT / 1000 * this.playSpeed; // ms => s
+             //console.warn("🔥 __updateFPS 被调用了：", this.videostartTime);
+            // console.warn("🔥 __updateFPS 被调用了：", this.loopedTime);
+             //console.warn("🔥 __updateFPS 被调用了：", this.deltaT);
+            // debugger;
             // for 4dgs, sorting cannot catch up with rendering
             // therefore, the rendering of the first frame may use the sorted indices of the last frame
             // which may cause inconsistency and flash
@@ -840,6 +847,8 @@ export default class GSViewer {
                 this.sortForSkipFrame = true;
             }
             this.loopedTime = Math.min(this.videoDuration, this.loopedTime);
+            this.reportTime = this.loopedTime+this.videostartTime;
+            this.reportTime = Math.min(this.videoDuration, this.reportTime);
             //this.loopedTime = 
             this.eventBus.emit('noteExternalListener', {
                 updateTimestamp: true,
