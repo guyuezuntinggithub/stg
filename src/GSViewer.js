@@ -521,7 +521,7 @@ export default class GSViewer {
 
         this.eventBus.emit('noteExternalListener', {
             updateTimestamp: true,
-            timestamp: this.videostartTime,
+            timestamp: this.loopedTime,
             duration: this.videoDuration,
         });
     }
