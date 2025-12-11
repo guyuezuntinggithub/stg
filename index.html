@@ -1249,6 +1249,9 @@
                 viewer.addExternalListener((msg) => {
                     if (msg.updateTimestamp) {
                         if (!isDraggingTimelineSlider.value) {
+                            //debugger; // 会触发断点
+                            //console.log("🔥 msg.updateTimestamp mag触发", msg.timestamp, msg.duration);
+                            //console.warn("🔥 msg.updateTimestamp mag触发", msg.timestamp, msg.duration);
                             timeline.currentTime = msg.timestamp;
                             timeline.totalDuration = msg.duration;
                         }

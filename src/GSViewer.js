@@ -512,6 +512,7 @@ export default class GSViewer {
             this.videoDuration = 1.0;
             this.pause = false;
             this.setTimestamp(0);
+            //this.loopedTime = this.videostartTime;
         } else if (sceneType.virtualSequentialThreeD) {
             this.videoDuration = data.frameNum;
             this.pause = false;
@@ -520,7 +521,7 @@ export default class GSViewer {
 
         this.eventBus.emit('noteExternalListener', {
             updateTimestamp: true,
-            timestamp: this.loopedTime,
+            timestamp: this.videostartTime,
             duration: this.videoDuration,
         });
     }
@@ -830,7 +831,7 @@ export default class GSViewer {
         this.deltaT = currentTime - this.lastFrameTime;
         this.lastFrameTime = currentTime;
         if (!this.pause && !this.isDraggingTimeline) {
-            this.loopedTime += this.deltaT / 1000 * this.playSpeed; // ms => s
+            this.loopedTime = this.loopedTime+this.videostartTime+this.deltaT / 1000 * this.playSpeed; // ms => s
             // for 4dgs, sorting cannot catch up with rendering
             // therefore, the rendering of the first frame may use the sorted indices of the last frame
             // which may cause inconsistency and flash
@@ -839,7 +840,7 @@ export default class GSViewer {
                 this.sortForSkipFrame = true;
             }
             this.loopedTime = Math.min(this.videoDuration, this.loopedTime);
-
+            //this.loopedTime = 
             this.eventBus.emit('noteExternalListener', {
                 updateTimestamp: true,
                 timestamp: this.loopedTime,
